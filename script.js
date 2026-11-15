@@ -52,10 +52,8 @@ document.addEventListener('DOMContentLoaded', () => {
      3. State Management: Inventory & Authentication
      ========================================================= */
   // BACKEND API & WEBSOCKET CONFIGURATION
-  // If hosting frontend on Cloudflare Pages and backend on Render/Railway,
-  // set your live backend URL here (e.g. 'https://your-backend.onrender.com').
-  // When running locally with server.js, leave empty '' to auto-connect.
-  const API_BASE_URL = window.API_BASE_URL || '';
+  // Connected to your live Render backend service
+  const API_BASE_URL = 'https://seven40-distro.onrender.com';
 
   const INVENTORY_STORAGE_KEY = '740_distro_inventory_data';
   const USER_SESSION_KEY = '740_distro_user_session';
@@ -321,6 +319,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         break;
 
+      case 'CHAT_HISTORY':
+        if (isAdminLoggedIn && data.userId === selectedConversationUserId) {
+          const conv = adminConversations.find(c => c.userId === data.userId);
+          renderAdminChatMessages(data.history || [], conv?.username || 'Customer');
+        }
+        break;
+
       case 'USER_TYPING':
         handleTypingNotice(data);
         break;
@@ -330,15 +335,45 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Fallback initial HTTP fetch of inventory
-  fetch(`${API_BASE_URL}/api/inventory`)
-    .then(r => r.json())
-    .then(data => {
-      if (data && data.stockCount !== undefined) {
-        renderInventoryUI(data, false);
+  // Periodic and Visibility Inventory Sync
+  function fetchLatestInventory() {
+    fetch(`${API_BASE_URL}/api/inventory?t=${Date.now()}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.stockCount !== undefined) {
+          const changed = data.stockCount !== currentInventory.stockCount ||
+                          data.stockLabel !== currentInventory.stockLabel ||
+                          JSON.stringify(data.prices) !== JSON.stringify(currentInventory.prices);
+          if (changed) {
+            renderInventoryUI(data, true);
+          }
+        }
+      })
+      .catch(() => {});
+  }
+
+  // Initial HTTP fetch of inventory
+  fetchLatestInventory();
+
+  // Poll inventory every 5 seconds for rock-solid live sync on all devices
+  setInterval(fetchLatestInventory, 5000);
+
+  // Auto re-sync when screen unlocks or tab becomes active
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        initWebSocket();
       }
-    })
-    .catch(() => {});
+      fetchLatestInventory();
+      if (isAdminLoggedIn) {
+        loadAdminConversations();
+        if (selectedConversationUserId) {
+          const conv = adminConversations.find(c => c.userId === selectedConversationUserId);
+          loadAdminChatHistory(selectedConversationUserId, conv?.username || 'Customer');
+        }
+      }
+    }
+  });
 
   // Start WebSocket connection
   initWebSocket();
@@ -827,6 +862,10 @@ document.addEventListener('DOMContentLoaded', () => {
       tabBtnAdminChat.classList.add('active');
       adminTabInventoryContent.classList.add('hidden');
       adminTabChatContent.classList.remove('hidden');
+      const layout = document.querySelector('.admin-chat-layout');
+      if (layout && !selectedConversationUserId) {
+        layout.classList.remove('mobile-chat-active');
+      }
       loadAdminConversations();
     } else {
       tabBtnAdminChat.classList.remove('active');
@@ -940,17 +979,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // 2. Also save via REST API
       try {
-        await fetch(`${API_BASE_URL}/api/inventory`, {
+        const res = await fetch(`${API_BASE_URL}/api/inventory`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${currentAdminToken || ''}`
+            'Authorization': `Bearer ${currentAdminToken || ADMIN_PASSCODE}`,
+            'x-admin-pass': ADMIN_PASSCODE
           },
           body: JSON.stringify({
             adminPass: ADMIN_PASSCODE,
             ...updated
           })
         });
+        const invRes = await res.json();
+        if (invRes && invRes.success && invRes.inventory) {
+          renderInventoryUI(invRes.inventory, true);
+        }
       } catch (e) {
         console.warn("HTTP inventory save:", e);
       }
@@ -982,8 +1026,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Fallback HTTP
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/conversations`, {
-        headers: { 'Authorization': `Bearer ${currentAdminToken || ''}` }
+      const res = await fetch(`${API_BASE_URL}/api/admin/conversations?adminPass=${ADMIN_PASSCODE}`, {
+        headers: {
+          'Authorization': `Bearer ${currentAdminToken || ADMIN_PASSCODE}`,
+          'x-admin-pass': ADMIN_PASSCODE
+        }
       });
       const data = await res.json();
       if (data && data.success && Array.isArray(data.conversations)) {
@@ -1075,8 +1122,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  const btnAdminBackToUsers = document.getElementById('btnAdminBackToUsers');
+  if (btnAdminBackToUsers) {
+    btnAdminBackToUsers.addEventListener('click', () => {
+      const layout = document.querySelector('.admin-chat-layout');
+      if (layout) layout.classList.remove('mobile-chat-active');
+    });
+  }
+
   async function selectAdminUserConversation(userConv) {
     selectedConversationUserId = userConv.userId;
+
+    // Show chat pane on mobile devices
+    const layout = document.querySelector('.admin-chat-layout');
+    if (layout) layout.classList.add('mobile-chat-active');
 
     // Highlight in list
     document.querySelectorAll('.admin-user-card').forEach(el => {
@@ -1123,16 +1182,29 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="admin-chat-placeholder">Loading messages with @${username}...</div>
     `;
 
+    // 1. Request via WebSocket
+    sendWsMessage({
+      type: 'GET_CHAT_HISTORY',
+      targetUserId: userId
+    });
+
+    // 2. Request via HTTP fallback with direct admin credentials
     try {
-      const res = await fetch(`${API_BASE_URL}/api/chat/history?userId=${userId}`, {
-        headers: { 'Authorization': `Bearer ${currentAdminToken || ''}` }
+      const res = await fetch(`${API_BASE_URL}/api/chat/history?userId=${userId}&adminPass=${ADMIN_PASSCODE}`, {
+        headers: {
+          'Authorization': `Bearer ${currentAdminToken || ADMIN_PASSCODE}`,
+          'x-admin-pass': ADMIN_PASSCODE
+        }
       });
       const data = await res.json();
       if (data && data.success && Array.isArray(data.history)) {
         renderAdminChatMessages(data.history, username);
+      } else {
+        renderAdminChatMessages([], username);
       }
     } catch (e) {
       console.warn("Failed to load chat history:", e);
+      renderAdminChatMessages([], username);
     }
   }
 
@@ -1205,22 +1277,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const sent = sendWsMessage({
       type: 'SEND_MESSAGE',
       targetUserId: selectedConversationUserId,
-      text: cleanText
+      text: cleanText,
+      adminPass: ADMIN_PASSCODE
     });
 
-    if (!sent) {
-      fetch(`${API_BASE_URL}/api/chat/send`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${currentAdminToken || ''}`
-        },
-        body: JSON.stringify({
-          targetUserId: selectedConversationUserId,
-          text: cleanText
-        })
-      }).catch(() => {});
-    }
+    // 2. Also send via HTTP fallback with admin credentials
+    fetch(`${API_BASE_URL}/api/chat/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${currentAdminToken || ADMIN_PASSCODE}`,
+        'x-admin-pass': ADMIN_PASSCODE
+      },
+      body: JSON.stringify({
+        targetUserId: selectedConversationUserId,
+        text: cleanText,
+        adminPass: ADMIN_PASSCODE
+      })
+    }).then(r => r.json()).then(data => {
+      if (data && data.success && data.message) {
+        appendAdminConversationBubble(data.message, username);
+      }
+    }).catch(() => {});
 
     if (adminChatInput) adminChatInput.value = '';
   }
