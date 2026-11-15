@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#030604" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>740 DISTRO | Ohio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Clean Video Entrance Screen -->
+  <div id="entranceScreen" class="entrance-screen">
+    <video class="entrance-video-bg" autoplay loop muted playsinline>
+      <source src="assets/video1.mp4" type="video/mp4" />
+    </video>
+    <div class="entrance-video-overlay"></div>
+
+    <div class="entrance-card">
+      <div class="entrance-glow-orb"></div>
+      <div class="entrance-tag">
+        <span class="pulse-dot"></span> OHIO
+      </div>
+      <h2 class="entrance-lead">WELCOME TO</h2>
+      <h1 class="entrance-brand">740 DISTRO</h1>
+      <p class="entrance-sub">SERVING LANCASTER AND SURROUNDING AREAS</p>
+      
+      <button id="enterBtn" class="entrance-btn" aria-label="Enter Website">
+        <span class="btn-text">ENTER</span>
+        <div class="btn-light-sweep"></div>
+      </button>
+    </div>
+  </div>
+
+  <!-- Fixed Background Layer with High Pop & Vivid Filters -->
+  <div class="background-art-layer"></div>
+  <div class="ambient-glow-mesh"></div>
+  <div class="background-overlay"></div>
+  <canvas id="smokeCanvas" class="smoke-fx-canvas"></canvas>
+
+  <!-- Admin Login Trigger Button (Bottom Left) -->
+  <button id="adminLoginBtn" class="admin-trigger-btn" title="Inventory & Live Chat Control">
+    <span class="admin-icon">⚙️</span>
+    <span class="admin-text">ADMIN</span>
+    <span id="adminUnreadBadge" class="admin-badge-count hidden">0</span>
+  </button>
+
+  <!-- Top Right Action Cluster -->
+  <div class="top-nav-cluster">
+    <!-- User Account Button / Logged-in Pill -->
+    <button id="userAuthBtn" class="corner-user-btn" title="Member Login & Registration">
+      <span class="user-btn-icon">👤</span>
+      <span class="user-btn-text">LOGIN / REGISTER</span>
+    </button>
+    <div id="userProfilePill" class="corner-user-pill hidden">
+      <span class="online-status-dot"></span>
+      <span id="navUsername" class="nav-username">@username</span>
+      <button id="navLogoutBtn" class="pill-logout-btn" title="Log Out">LOGOUT</button>
+    </div>
+
+    <!-- Top Corner Telegram Badge -->
+    <a href="https://t.me/gasstation740" target="_blank" rel="noopener noreferrer" class="corner-telegram" title="Connect on Telegram">
+      <svg class="tg-svg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"></line>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+      </svg>
+      <span>@gasstation740</span>
+      <span class="online-status-dot"></span>
+    </a>
+  </div>
+
+  <!-- Main Content Container -->
+  <main class="content-wrapper">
+    <!-- Header Titles -->
+    <header class="header-section">
+      <div class="header-aura"></div>
+      <div class="top-tag">
+        <span class="pulse-dot"></span> OHIO
+      </div>
+      <h1 class="main-title">740 DISTRO</h1>
+      <p class="subtitle">SERVING LANCASTER AND SURROUNDING AREAS</p>
+      <div class="title-divider">
+        <span class="divider-line"></span>
+        <span class="divider-gem"></span>
+        <span class="divider-line"></span>
+      </div>
+    </header>
+
+    <!-- Videos Showcase -->
+    <section class="video-container">
+      <!-- Video 1 -->
+      <div class="video-card">
+        <div class="card-glass-spec"></div>
+        <div class="video-wrapper">
+          <video controls autoplay loop muted playsinline>
+            <source src="assets/video1.mp4" type="video/mp4" />
+            Your browser does not support the video tag.
+          </video>
+        </div>
+      </div>
+
+      <!-- Video 2 -->
+      <div class="video-card">
+        <div class="card-glass-spec"></div>
+        <div class="video-wrapper">
+          <video controls autoplay loop muted playsinline>
+            <source src="assets/video2.mp4" type="video/mp4" />
+            Your browser does not support the video tag.
+          </video>
+        </div>
+      </div>
+
+      <!-- Video 3 (With IN STOCK badge and Menu pricing) -->
+      <div class="video-card featured-product-card">
+        <div class="card-glass-spec"></div>
+        <div class="video-header-bar">
+          <span class="stock-badge" id="stockBadgeDisplay">
+            <span class="pulse-indicator"></span> 
+            <span id="stockCountText">26</span> 
+            <span id="stockLabelText">IN STOCK</span>
+          </span>
+          <span class="live-pill" id="liveSyncPill">LIVE SYNC</span>
+        </div>
+
+        <div class="video-wrapper">
+          <video controls autoplay loop muted playsinline>
+            <source src="assets/video3.mp4" type="video/mp4" />
+            Your browser does not support the video tag.
+          </video>
+        </div>
+
+        <!-- Sleek Menu / Pricing Box -->
+        <div class="product-menu">
+          <div class="menu-header">
+            <span class="menu-decor-line"></span>
+            <span class="menu-title">OFFICIAL MENU</span>
+            <span class="menu-decor-line"></span>
+          </div>
+
+          <div class="price-list">
+            <div class="price-row" id="priceRow1">
+              <div class="qty-pill">
+                <span class="qty-num">1</span>
+                <span class="qty-lbl">UNIT</span>
+              </div>
+              <div class="price-spacer"></div>
+              <span class="price-tag" id="priceDisplay1">$40</span>
+            </div>
+
+            <div class="price-row" id="priceRow2">
+              <div class="qty-pill">
+                <span class="qty-num">2</span>
+                <span class="qty-lbl">UNITS</span>
+              </div>
+              <div class="price-spacer"></div>
+              <span class="price-tag" id="priceDisplay2">$75</span>
+            </div>
+
+            <div class="price-row" id="priceRow5">
+              <div class="qty-pill">
+                <span class="qty-num">5</span>
+                <span class="qty-lbl">UNITS</span>
+              </div>
+              <div class="price-spacer"></div>
+              <span class="price-tag" id="priceDisplay5">$180</span>
+            </div>
+
+            <div class="price-row" id="priceRow10">
+              <div class="qty-pill">
+                <span class="qty-num">10</span>
+                <span class="qty-lbl">UNITS</span>
+              </div>
+              <div class="price-spacer"></div>
+              <span class="price-tag" id="priceDisplay10">$320</span>
+            </div>
+
+            <div class="price-row tier-vip" id="priceRow20">
+              <div class="qty-pill vip-pill">
+                <span class="qty-num">20</span>
+                <span class="qty-lbl">BUNDLE</span>
+              </div>
+              <div class="price-spacer"></div>
+              <span class="price-tag vip-price" id="priceDisplay20">$620</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 740 Live Chat Box Section (Below Videos) -->
+    <section class="chat-section" id="chatSection">
+      <div class="chat-box-container">
+        <!-- Chat Header -->
+        <div class="chat-header">
+          <div class="chat-header-info">
+            <span class="chat-status-indicator" id="chatStatusDot"></span>
+            <div>
+              <div class="chat-title">740 DISPATCH // LIVE CHAT</div>
+              <div class="chat-status-text" id="chatStatusText">Lancaster, OH • Direct 1-on-1 Line with Admin</div>
+            </div>
+          </div>
+          <div class="chat-header-badges">
+            <span class="chat-live-badge" id="chatLiveBadge">● LIVE SYNC</span>
+            <a href="https://t.me/gasstation740" target="_blank" rel="noopener noreferrer" class="chat-tg-link" title="Open Telegram">
+              <span>@gasstation740</span>
+              <svg class="tg-mini-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </a>
+          </div>
+        </div>
+
+        <!-- Chat Auth Banner (Guest Prompt vs Logged In Status) -->
+        <div id="chatAuthPrompt" class="chat-auth-prompt">
+          <div class="prompt-left">
+            <span class="prompt-bolt">⚡</span>
+            <span class="prompt-desc">Want to chat directly with 740 Admin? Register in 5 seconds (username & password only).</span>
+          </div>
+          <button type="button" id="chatOpenAuthBtn" class="btn-prompt-auth">SIGN IN / REGISTER</button>
+        </div>
+
+        <div id="chatUserBanner" class="chat-user-banner hidden">
+          <div class="banner-left">
+            <span class="user-active-dot"></span>
+            <span>Connected as <strong id="chatLoggedUsername" class="highlight-username">@user</strong> &bull; Direct channel with Admin</span>
+          </div>
+          <button type="button" id="chatLogoutBtn" class="btn-banner-logout">Switch / Logout</button>
+        </div>
+
+        <!-- Chat Messages Body -->
+        <div class="chat-messages" id="chatMessages">
+          <div class="message msg-bot">
+            <div class="msg-sender">740 DISPATCH</div>
+            <div class="msg-bubble">
+              Yo! Welcome to 740 Distro. Serving Lancaster and surrounding areas. Have questions about our drops, inventory, or want to lock in an order? Drop a message below or contact us on Telegram <strong>@gasstation740</strong>.
+            </div>
+            <div class="msg-time">Just now</div>
+          </div>
+        </div>
+
+        <!-- Typing Indicator Container -->
+        <div id="chatTypingIndicator" class="chat-typing-container hidden">
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+          <span id="chatTypingText">740 Admin is typing...</span>
+        </div>
+
+        <!-- Quick Action Prompt Pills -->
+        <div class="chat-quick-pills">
+          <button type="button" class="quick-pill" data-msg="How much is currently in stock?">📦 Check Stock</button>
+          <button type="button" class="quick-pill" data-msg="What are your areas & delivery?">📍 Areas & Service</button>
+          <button type="button" class="quick-pill" data-msg="I want to place an order!">🛒 How To Order</button>
+        </div>
+
+        <!-- Chat Input Form -->
+        <form id="chatForm" class="chat-input-bar">
+          <input 
+            type="text" 
+            id="chatInput" 
+            placeholder="Type a message or order inquiry..." 
+            autocomplete="off" 
+            maxlength="250"
+          />
+          <button type="submit" id="chatSendBtn" class="chat-send-btn" aria-label="Send Message">
+            <span>SEND</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="send-icon">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <!-- User Login & Register Modal (Username & Password Only) -->
+  <div id="userAuthModal" class="admin-modal-overlay hidden">
+    <div class="admin-modal-box user-auth-box">
+      <button class="modal-close-btn" id="closeUserAuthModal">&times;</button>
+      <div class="admin-tag">MEMBER ACCESS</div>
+      <h3 class="admin-title" id="userAuthTitle">740 MEMBER LOGIN</h3>
+      <p class="admin-sub" id="userAuthSub">Only username and password required. No email or phone needed.</p>
+
+      <!-- Auth Navigation Tabs -->
+      <div class="auth-tabs-nav">
+        <button type="button" id="tabBtnLogin" class="auth-tab-btn active">LOG IN</button>
+        <button type="button" id="tabBtnRegister" class="auth-tab-btn">REGISTER</button>
+      </div>
+
+      <!-- Login Form View -->
+      <form id="formUserLogin" class="auth-form-panel">
+        <div class="admin-form-group">
+          <label class="setting-label">Username</label>
+          <input type="text" id="loginUsername" placeholder="Enter username" autocomplete="username" required />
+        </div>
+        <div class="admin-form-group">
+          <label class="setting-label">Password</label>
+          <input type="password" id="loginPassword" placeholder="Enter password" autocomplete="current-password" required />
+        </div>
+        <div id="loginErrorMsg" class="admin-error-msg"></div>
+        <div class="admin-modal-actions">
+          <button type="submit" id="btnSubmitLoginUser" class="btn-admin-submit">SIGN IN</button>
+        </div>
+        <div class="auth-footer-prompt">
+          <span>Need an account?</span>
+          <button type="button" id="linkToRegister" class="auth-link-btn">Register in 5 seconds &rarr;</button>
+        </div>
+      </form>
+
+      <!-- Register Form View -->
+      <form id="formUserRegister" class="auth-form-panel hidden">
+        <div class="admin-form-group">
+          <label class="setting-label">Choose Username</label>
+          <input type="text" id="registerUsername" placeholder="e.g. blunt_king, ohio_buyer" autocomplete="username" maxlength="20" required />
+          <span class="auth-field-hint">3-20 characters (letters, numbers, underscore)</span>
+        </div>
+        <div class="admin-form-group">
+          <label class="setting-label">Create Password</label>
+          <input type="password" id="registerPassword" placeholder="At least 4 characters" autocomplete="new-password" required />
+        </div>
+        <div class="admin-form-group">
+          <label class="setting-label">Confirm Password</label>
+          <input type="password" id="registerPasswordConfirm" placeholder="Re-enter password" autocomplete="new-password" required />
+        </div>
+        <div id="registerErrorMsg" class="admin-error-msg"></div>
+        <div id="registerSuccessMsg" class="admin-success-msg"></div>
+        <div class="admin-modal-actions">
+          <button type="submit" id="btnSubmitRegisterUser" class="btn-admin-submit">CREATE ACCOUNT</button>
+        </div>
+        <div class="auth-footer-prompt">
+          <span>Already have an account?</span>
+          <button type="button" id="linkToLogin" class="auth-link-btn">Log In &rarr;</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Admin Passcode Unlock Modal -->
+  <div id="adminLoginModal" class="admin-modal-overlay hidden">
+    <div class="admin-modal-box">
+      <button class="modal-close-btn" id="closeLoginModal">&times;</button>
+      <div class="admin-tag">SECURITY ACCESS</div>
+      <h3 class="admin-title">ADMIN LOGIN</h3>
+      <p class="admin-sub">Enter owner passcode to manage inventory & live chats.</p>
+      
+      <div class="admin-form-group">
+        <input type="password" id="adminPassInput" placeholder="Enter admin password" autofocus />
+      </div>
+      <div id="adminLoginError" class="admin-error-msg"></div>
+
+      <div class="admin-modal-actions">
+        <button id="btnSubmitLogin" class="btn-admin-submit">UNLOCK COMMAND CENTER</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin Command Center Modal (Inventory + Live User Chat Panel) -->
+  <div id="adminDashboardModal" class="admin-modal-overlay hidden">
+    <div class="admin-modal-box admin-dashboard-box admin-wide-dashboard">
+      <button class="modal-close-btn" id="closeDashboardModal">&times;</button>
+      
+      <div class="admin-header-flex">
+        <div>
+          <div class="admin-tag">COMMAND CENTER</div>
+          <h3 class="admin-title">740 ADMIN DISPATCH</h3>
+          <p class="admin-sub">Manage live stock count, menu prices & direct chat with customers.</p>
+        </div>
+        
+        <!-- Tab Switcher -->
+        <div class="admin-nav-tabs">
+          <button type="button" id="tabBtnAdminInventory" class="admin-tab-btn active">
+            <span>📦 INVENTORY & PRICES</span>
+          </button>
+          <button type="button" id="tabBtnAdminChat" class="admin-tab-btn">
+            <span>💬 LIVE USER CHATS</span>
+            <span id="adminChatTabBadge" class="admin-tab-unread-pill hidden">0</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- TAB 1: Inventory & Menu Control -->
+      <div id="adminTabInventoryContent" class="admin-tab-pane active">
+        <div class="admin-settings-section">
+          <div class="section-badge-bar">
+            <label class="setting-label">Item Stock Count</label>
+            <span class="realtime-badge">⚡ Live Sync Active</span>
+          </div>
+          <div class="input-with-stepper">
+            <input type="number" id="inputStockCount" min="0" max="9999" value="26" />
+            <span class="unit-tag">UNITS</span>
+          </div>
+        </div>
+
+        <div class="admin-settings-section">
+          <label class="setting-label">Stock Status Text</label>
+          <div class="status-input-wrap">
+            <input type="text" id="inputStockLabel" value="IN STOCK" placeholder="e.g. IN STOCK, SOLD OUT, LIMITED BATCH" />
+            <div class="preset-btns">
+              <button type="button" id="btnPresetInStock" class="preset-pill preset-green">IN STOCK</button>
+              <button type="button" id="btnPresetSoldOut" class="preset-pill preset-red">SOLD OUT</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-settings-section">
+          <label class="setting-label">Menu Prices ($ USD)</label>
+          <div class="price-inputs-grid">
+            <div class="price-input-row">
+              <span>1 for $</span>
+              <input type="number" id="inputPrice1" value="40" min="0" />
+            </div>
+            <div class="price-input-row">
+              <span>2 for $</span>
+              <input type="number" id="inputPrice2" value="75" min="0" />
+            </div>
+            <div class="price-input-row">
+              <span>5 for $</span>
+              <input type="number" id="inputPrice5" value="180" min="0" />
+            </div>
+            <div class="price-input-row">
+              <span>10 for $</span>
+              <input type="number" id="inputPrice10" value="320" min="0" />
+            </div>
+            <div class="price-input-row">
+              <span>20 for $</span>
+              <input type="number" id="inputPrice20" value="620" min="0" />
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-dashboard-footer">
+          <button id="btnSaveInventory" class="btn-admin-save">SAVE & BROADCAST LIVE</button>
+          <button id="btnLogoutAdmin" class="btn-admin-logout">LOGOUT</button>
+        </div>
+      </div>
+
+      <!-- TAB 2: Live User Chat Panel -->
+      <div id="adminTabChatContent" class="admin-tab-pane hidden">
+        <div class="admin-chat-layout">
+          <!-- Left: User List -->
+          <div class="admin-chat-sidebar">
+            <div class="sidebar-search-bar">
+              <input type="text" id="adminUserSearchInput" placeholder="Search registered users..." />
+            </div>
+            <div class="sidebar-users-list" id="adminUserList">
+              <div class="admin-empty-notice">Loading registered users...</div>
+            </div>
+          </div>
+
+          <!-- Right: Direct Conversation Window -->
+          <div class="admin-chat-main">
+            <!-- Selected User Header -->
+            <div class="chat-target-header" id="chatTargetHeader">
+              <div class="target-user-info">
+                <span class="target-status-dot" id="targetStatusDot"></span>
+                <div>
+                  <div class="target-username" id="targetUsernameDisplay">Select a customer to chat</div>
+                  <div class="target-details" id="targetDetailsDisplay">Messages update live</div>
+                </div>
+              </div>
+              <button type="button" id="btnRefreshConversations" class="btn-icon-refresh" title="Refresh Users">↻</button>
+            </div>
+
+            <!-- Conversation Messages Body -->
+            <div class="admin-conversation-messages" id="adminConversationMessages">
+              <div class="admin-chat-placeholder">
+                <span class="placeholder-icon">💬</span>
+                <p>Click on any registered user from the left list to open their direct 1-on-1 chat.</p>
+              </div>
+            </div>
+
+            <!-- Admin Quick Canned Responses -->
+            <div class="admin-quick-replies" id="adminQuickReplies">
+              <button type="button" class="admin-canned-chip" data-reply="Yo! How can I help you today?">👋 Greeting</button>
+              <button type="button" class="admin-canned-chip" data-reply="Yes! In stock right now in Lancaster. Ready for meetup.">📦 In Stock</button>
+              <button type="button" class="admin-canned-chip" data-reply="Hit up our Telegram @gasstation740 to lock in the drop spot.">📍 Telegram Drop</button>
+              <button type="button" class="admin-canned-chip" data-reply="What quantity are you looking to get?">🔢 Ask Quantity</button>
+              <button type="button" class="admin-canned-chip" data-reply="Locked in! On the way now.">🚗 On The Way</button>
+            </div>
+
+            <!-- Admin Reply Input -->
+            <form id="adminChatForm" class="admin-reply-bar">
+              <input 
+                type="text" 
+                id="adminChatInput" 
+                placeholder="Type reply to customer..." 
+                autocomplete="off" 
+                disabled 
+              />
+              <button type="submit" id="adminChatSendBtn" class="btn-admin-reply-send" disabled>
+                <span>SEND</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="send-icon">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Live Toast Notification -->
+  <div id="toastNotification" class="toast-popup hidden">
+    <span class="toast-check">✓</span>
+    <span id="toastMessage">Stock updated!</span>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
