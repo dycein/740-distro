@@ -52,10 +52,28 @@ document.addEventListener('DOMContentLoaded', () => {
      3. State Management: Inventory & Authentication
      ========================================================= */
   // BACKEND API & WEBSOCKET CONFIGURATION
-  // Connected to your live Render backend service
-  const API_BASE_URL = 'https://seven40-distro.onrender.com';
+  function getApiBaseUrl() {
+    if (window.location.protocol === 'file:') {
+      return 'http://localhost:3000';
+    }
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '::1') {
+      return '';
+    }
+    if (window.location.hostname.includes('onrender.com')) {
+      return '';
+    }
+    return 'https://seven40-distro.onrender.com';
+  }
+  let API_BASE_URL = getApiBaseUrl();
+
+  // Pre-warm backend (prevents cold start delays on Render)
+  try {
+    fetch(`${API_BASE_URL}/api/inventory?t=${Date.now()}`).catch(() => {});
+  } catch (e) {}
 
   const INVENTORY_STORAGE_KEY = '740_distro_inventory_data';
+  const LOCKED_PRICES_KEY = '740_distro_locked_prices';
+  const ACCOUNTS_VAULT_KEY = '740_distro_accounts_vault';
   const USER_SESSION_KEY = '740_distro_user_session';
   const ADMIN_SESSION_KEY = '740_distro_admin_session';
   const ADMIN_PASSCODE = 'yartys740distro';
@@ -69,19 +87,52 @@ document.addEventListener('DOMContentLoaded', () => {
       5: 180,
       10: 320,
       20: 620
-    }
+    },
+    updatedAt: 0
   };
 
   let currentInventory = { ...defaultInventory };
 
-  // Load cached inventory from localStorage as initial fallback
+  // Load cached inventory and locked custom prices from localStorage
   try {
     const cached = localStorage.getItem(INVENTORY_STORAGE_KEY);
     if (cached) {
       currentInventory = { ...defaultInventory, ...JSON.parse(cached) };
     }
+    const lockedPrices = localStorage.getItem(LOCKED_PRICES_KEY);
+    if (lockedPrices) {
+      currentInventory.prices = { ...currentInventory.prices, ...JSON.parse(lockedPrices) };
+    }
   } catch (e) {
     console.warn("Storage read error:", e);
+  }
+
+  // Helper: Persistent Accounts Vault for Auto-Healing
+  function getAccountsVault() {
+    try {
+      const raw = localStorage.getItem(ACCOUNTS_VAULT_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveToAccountsVault(accounts) {
+    if (!Array.isArray(accounts)) return;
+    try {
+      const existing = getAccountsVault();
+      accounts.forEach(acc => {
+        if (acc && acc.username) {
+          const idx = existing.findIndex(e => e.username.toLowerCase() === acc.username.toLowerCase());
+          if (idx >= 0) {
+            existing[idx] = { ...existing[idx], ...acc };
+          } else {
+            existing.push(acc);
+          }
+        }
+      });
+      localStorage.setItem(ACCOUNTS_VAULT_KEY, JSON.stringify(existing));
+    } catch (e) {}
   }
 
   // Active User & Admin Session States
@@ -127,7 +178,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const priceRow20 = document.getElementById('priceRow20');
 
   function renderInventoryUI(inv, shouldPulse = false) {
-    currentInventory = { ...currentInventory, ...inv };
+    if (!inv) return;
+    const incomingPrices = inv.prices || currentInventory.prices;
+    currentInventory = { 
+      ...currentInventory, 
+      ...inv,
+      prices: { ...currentInventory.prices, ...incomingPrices },
+      updatedAt: Math.max(currentInventory.updatedAt || 0, inv.updatedAt || 0)
+    };
+
     try {
       localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(currentInventory));
     } catch (e) {}
@@ -175,6 +234,39 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
     }
+  }
+
+  // Handle inventory incoming from WebSocket or HTTP with anti-revert protection
+  function handleInventoryUpdate(serverInv, isBroadcast = false) {
+    if (!serverInv || !serverInv.prices) return;
+
+    const serverTime = parseInt(serverInv.updatedAt, 10) || 0;
+    const localTime = parseInt(currentInventory.updatedAt, 10) || 0;
+
+    // PROTECTION AGAINST STALE SERVER RESETS:
+    // If client has custom saved prices (localTime > 0) and the server restarted with older/default inventory (serverTime < localTime),
+    // do not let the server reset our prices! Re-sync local prices back to server immediately!
+    if (localTime > serverTime && localTime > 0) {
+      console.log(`⚡ Retaining custom prices (local ${localTime} > server ${serverTime}). Auto-healing server prices...`);
+      syncInventoryToServer(currentInventory);
+      return;
+    }
+
+    renderInventoryUI(serverInv, isBroadcast);
+    if (isBroadcast) {
+      showToast(`⚡ Stock & Menu updated live: ${serverInv.stockCount} ${serverInv.stockLabel}`);
+    }
+  }
+
+  function syncInventoryToServer(inv) {
+    if (!inv || !inv.prices) return;
+    try {
+      fetch(`${API_BASE_URL}/api/inventory/sync-if-newer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inventory: inv })
+      }).catch(() => {});
+    } catch (e) {}
   }
 
   // Initial render
@@ -286,10 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
     switch (data.type) {
       case 'INVENTORY_INIT':
       case 'INVENTORY_UPDATED':
-        renderInventoryUI(data.inventory, data.type === 'INVENTORY_UPDATED');
-        if (data.type === 'INVENTORY_UPDATED') {
-          showToast(`⚡ Stock & Menu updated live: ${data.inventory.stockCount} ${data.inventory.stockLabel}`);
-        }
+        handleInventoryUpdate(data.inventory, data.type === 'INVENTORY_UPDATED');
         break;
 
       case 'CHAT_MESSAGE':
@@ -341,12 +430,7 @@ document.addEventListener('DOMContentLoaded', () => {
       .then(r => r.json())
       .then(data => {
         if (data && data.stockCount !== undefined) {
-          const changed = data.stockCount !== currentInventory.stockCount ||
-                          data.stockLabel !== currentInventory.stockLabel ||
-                          JSON.stringify(data.prices) !== JSON.stringify(currentInventory.prices);
-          if (changed) {
-            renderInventoryUI(data, true);
-          }
+          handleInventoryUpdate(data, false);
         }
       })
       .catch(() => {});
@@ -548,6 +632,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      const btnSubmit = document.getElementById('btnSubmitRegisterUser');
+      const origText = btnSubmit ? btnSubmit.textContent : 'CREATE ACCOUNT';
+      if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = '⚡ CREATING ACCOUNT...';
+      }
+
       try {
         const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
           method: 'POST',
@@ -561,15 +652,28 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
 
-        // Store session
+        // Store session and back up to persistent vault
         currentUser = data;
         localStorage.setItem(USER_SESSION_KEY, JSON.stringify(data));
+        if (data.user) {
+          saveToAccountsVault([{
+            id: data.user.id,
+            username: data.user.username,
+            role: data.user.role,
+            createdAt: Date.now()
+          }]);
+        }
         updateAuthUI();
         closeUserAuth();
         showToast(`⚡ Welcome to 740 Distro, @${username}!`);
 
       } catch (err) {
-        registerErrorMsg.textContent = 'Network error. Please make sure server is running.';
+        registerErrorMsg.textContent = 'Network error. Please make sure the server is awake and running.';
+      } finally {
+        if (btnSubmit) {
+          btnSubmit.disabled = false;
+          btnSubmit.textContent = origText;
+        }
       }
     });
   }
@@ -586,6 +690,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!username || !password) {
         loginErrorMsg.textContent = 'Please enter your username and password.';
         return;
+      }
+
+      const btnSubmit = document.getElementById('btnSubmitLoginUser');
+      const origText = btnSubmit ? btnSubmit.textContent : 'SIGN IN';
+      if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = '⚡ SIGNING IN...';
       }
 
       try {
@@ -616,7 +727,12 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast(`⚡ Welcome back, @${data.user.username}!`);
 
       } catch (err) {
-        loginErrorMsg.textContent = 'Network error. Please make sure server is running.';
+        loginErrorMsg.textContent = 'Network error. Please make sure the server is awake and running.';
+      } finally {
+        if (btnSubmit) {
+          btnSubmit.disabled = false;
+          btnSubmit.textContent = origText;
+        }
       }
     });
   }
@@ -795,6 +911,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const adminChatTabBadge = document.getElementById('adminChatTabBadge');
   const adminTabInventoryContent = document.getElementById('adminTabInventoryContent');
   const adminTabChatContent = document.getElementById('adminTabChatContent');
+  const tabBtnAdminBackup = document.getElementById('tabBtnAdminBackup');
+  const adminTabBackupContent = document.getElementById('adminTabBackupContent');
+  const dbStatusDot = document.getElementById('dbStatusDot');
+  const dbStatusTitle = document.getElementById('dbStatusTitle');
+  const dbStatusDesc = document.getElementById('dbStatusDesc');
+  const btnRefreshDbStatus = document.getElementById('btnRefreshDbStatus');
+  const adminTotalAccountsCount = document.getElementById('adminTotalAccountsCount');
+  const btnExportAccounts = document.getElementById('btnExportAccounts');
+  const adminRestoreJsonInput = document.getElementById('adminRestoreJsonInput');
+  const adminBackupFileInput = document.getElementById('adminBackupFileInput');
+  const btnSelectBackupFile = document.getElementById('btnSelectBackupFile');
+  const btnExecuteRestore = document.getElementById('btnExecuteRestore');
+  const adminRestoreResultMsg = document.getElementById('adminRestoreResultMsg');
 
   // Inventory inputs in Admin Dashboard
   const inputStockCount = document.getElementById('inputStockCount');
@@ -857,26 +986,248 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Admin Tab Switcher
   function switchAdminTab(tab) {
+    if (tabBtnAdminInventory) tabBtnAdminInventory.classList.toggle('active', tab === 'inventory');
+    if (tabBtnAdminChat) tabBtnAdminChat.classList.toggle('active', tab === 'chat');
+    if (tabBtnAdminBackup) tabBtnAdminBackup.classList.toggle('active', tab === 'backup');
+
+    if (adminTabInventoryContent) adminTabInventoryContent.classList.toggle('hidden', tab !== 'inventory');
+    if (adminTabChatContent) adminTabChatContent.classList.toggle('hidden', tab !== 'chat');
+    if (adminTabBackupContent) adminTabBackupContent.classList.toggle('hidden', tab !== 'backup');
+
     if (tab === 'chat') {
-      tabBtnAdminInventory.classList.remove('active');
-      tabBtnAdminChat.classList.add('active');
-      adminTabInventoryContent.classList.add('hidden');
-      adminTabChatContent.classList.remove('hidden');
       const layout = document.querySelector('.admin-chat-layout');
       if (layout && !selectedConversationUserId) {
         layout.classList.remove('mobile-chat-active');
       }
       loadAdminConversations();
-    } else {
-      tabBtnAdminChat.classList.remove('active');
-      tabBtnAdminInventory.classList.add('active');
-      adminTabChatContent.classList.add('hidden');
-      adminTabInventoryContent.classList.remove('hidden');
+    } else if (tab === 'backup') {
+      loadSystemStatus();
     }
   }
 
   if (tabBtnAdminInventory) tabBtnAdminInventory.addEventListener('click', () => switchAdminTab('inventory'));
   if (tabBtnAdminChat) tabBtnAdminChat.addEventListener('click', () => switchAdminTab('chat'));
+  if (tabBtnAdminBackup) tabBtnAdminBackup.addEventListener('click', () => switchAdminTab('backup'));
+
+  async function loadSystemStatus() {
+    if (!isAdminLoggedIn) return;
+    const dbStatusTitle = document.getElementById('dbStatusTitle');
+    const dbStatusDesc = document.getElementById('dbStatusDesc');
+    const dbStatusDot = document.getElementById('dbStatusDot');
+    const adminTotalAccountsCount = document.getElementById('adminTotalAccountsCount');
+
+    if (dbStatusTitle) dbStatusTitle.textContent = 'Checking server connection...';
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/system-status`, {
+        headers: {
+          'Authorization': `Bearer ${currentAdminToken || ADMIN_PASSCODE}`,
+          'x-admin-pass': ADMIN_PASSCODE
+        }
+      });
+
+      if (!res.ok) {
+        throw new Error(`Server returned HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (data && data.success) {
+        if (adminTotalAccountsCount) {
+          adminTotalAccountsCount.textContent = data.usersCount || 0;
+        }
+
+        // AUTO-HEAL ACCOUNTS: If server container was reset (0 accounts on server),
+        // automatically push our persistent accounts vault so accounts never disappear!
+        if (data.usersCount === 0) {
+          const vault = getAccountsVault();
+          if (vault && vault.length > 0) {
+            console.log(`⚡ Server has 0 accounts! Auto-healing ${vault.length} accounts from vault...`);
+            fetch(`${API_BASE_URL}/api/auth/auto-heal`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${currentAdminToken || ADMIN_PASSCODE}`,
+                'x-admin-pass': ADMIN_PASSCODE
+              },
+              body: JSON.stringify({
+                adminPass: ADMIN_PASSCODE,
+                accounts: vault,
+                inventory: currentInventory
+              })
+            })
+            .then(r => r.json())
+            .then(healRes => {
+              if (healRes && healRes.success) {
+                if (adminTotalAccountsCount) {
+                  adminTotalAccountsCount.textContent = healRes.totalUsers || vault.length;
+                }
+                showToast(`⚡ Auto-healed ${healRes.totalUsers || vault.length} accounts to server!`);
+                loadAdminConversations();
+              }
+            })
+            .catch(() => {});
+          }
+        }
+
+        if (data.database === 'mongodb' || data.isDbConnected) {
+          if (dbStatusDot) dbStatusDot.style.background = '#00ff66';
+          if (dbStatusTitle) {
+            dbStatusTitle.textContent = '🟢 Cloud Database Connected (MongoDB Atlas)';
+            dbStatusTitle.style.color = '#00ff66';
+          }
+          if (dbStatusDesc) {
+            dbStatusDesc.textContent = 'All accounts, menu prices, and chats are permanently saved in MongoDB Atlas. They will never reset when updating code!';
+          }
+        } else {
+          if (dbStatusDot) dbStatusDot.style.background = '#00ff66';
+          if (dbStatusTitle) {
+            dbStatusTitle.textContent = '🟢 Local Storage & Auto-Heal Active';
+            dbStatusTitle.style.color = '#00ff66';
+          }
+          if (dbStatusDesc) {
+            dbStatusDesc.innerHTML = 'Client-Side Self-Healing Vault is active. Accounts and menu prices are locked and auto-restored! (Add MONGODB_URI in Render dashboard for permanent multi-device cloud sync).';
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("System status check:", e);
+      if (dbStatusDot) dbStatusDot.style.background = '#ef4444';
+      if (dbStatusTitle) {
+        dbStatusTitle.textContent = '⚠️ Backend Endpoint Offline';
+        dbStatusTitle.style.color = '#ef4444';
+      }
+      if (dbStatusDesc) {
+        dbStatusDesc.innerHTML = `Could not reach backend (${e.message}). If hosted on Render, free instances can take ~30s to wake up from sleep. If testing locally, make sure <code>start-server.bat</code> is running!`;
+      }
+    }
+  }
+
+  // Export / Backup Accounts
+  if (btnExportAccounts) {
+    btnExportAccounts.addEventListener('click', async () => {
+      try {
+        btnExportAccounts.textContent = '⏳ Exporting...';
+        const res = await fetch(`${API_BASE_URL}/api/admin/backup?adminPass=${ADMIN_PASSCODE}`, {
+          headers: {
+            'Authorization': `Bearer ${currentAdminToken || ADMIN_PASSCODE}`,
+            'x-admin-pass': ADMIN_PASSCODE
+          }
+        });
+        const data = await res.json();
+        if (data && data.success) {
+          if (Array.isArray(data.users)) {
+            saveToAccountsVault(data.users);
+          }
+          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `740_distro_backup_${new Date().toISOString().slice(0, 10)}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          showToast(`✓ Backup downloaded! (${data.users?.length || 0} accounts)`);
+        } else {
+          showToast('Failed to export backup.');
+        }
+      } catch (err) {
+        showToast('Error exporting backup.');
+      } finally {
+        btnExportAccounts.textContent = '📥 DOWNLOAD BACKUP';
+      }
+    });
+  }
+
+  // Select File to Restore
+  if (btnSelectBackupFile && adminBackupFileInput) {
+    btnSelectBackupFile.addEventListener('click', () => adminBackupFileInput.click());
+    adminBackupFileInput.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        if (adminRestoreJsonInput) {
+          adminRestoreJsonInput.value = evt.target.result;
+        }
+        if (adminRestoreResultMsg) {
+          adminRestoreResultMsg.style.color = '#00ff66';
+          adminRestoreResultMsg.textContent = `Loaded file: ${file.name}. Ready to restore!`;
+        }
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  // Execute Restore
+  if (btnExecuteRestore) {
+    btnExecuteRestore.addEventListener('click', async () => {
+      const raw = adminRestoreJsonInput?.value.trim();
+      if (!raw) {
+        if (adminRestoreResultMsg) {
+          adminRestoreResultMsg.style.color = '#ef4444';
+          adminRestoreResultMsg.textContent = 'Please paste backup JSON or select a backup file first.';
+        }
+        return;
+      }
+
+      let parsed = null;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (e) {
+        if (adminRestoreResultMsg) {
+          adminRestoreResultMsg.style.color = '#ef4444';
+          adminRestoreResultMsg.textContent = 'Invalid JSON format. Please check the backup file.';
+        }
+        return;
+      }
+
+      btnExecuteRestore.disabled = true;
+      btnExecuteRestore.textContent = '⚡ RESTORING...';
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/admin/restore?adminPass=${ADMIN_PASSCODE}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentAdminToken || ADMIN_PASSCODE}`,
+            'x-admin-pass': ADMIN_PASSCODE
+          },
+          body: JSON.stringify(parsed)
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          if (adminRestoreResultMsg) {
+            adminRestoreResultMsg.style.color = '#00ff66';
+            adminRestoreResultMsg.textContent = `✓ ${data.message}`;
+          }
+          if (parsed.users || Array.isArray(parsed)) {
+            saveToAccountsVault(parsed.users || parsed);
+          }
+          showToast(`✓ Restored! Total active accounts: ${data.totalUsers}`);
+          loadSystemStatus();
+          loadAdminConversations();
+        } else {
+          if (adminRestoreResultMsg) {
+            adminRestoreResultMsg.style.color = '#ef4444';
+            adminRestoreResultMsg.textContent = data.error || 'Failed to restore.';
+          }
+        }
+      } catch (e) {
+        if (adminRestoreResultMsg) {
+          adminRestoreResultMsg.style.color = '#ef4444';
+          adminRestoreResultMsg.textContent = 'Network error while restoring.';
+        }
+      } finally {
+        btnExecuteRestore.disabled = false;
+        btnExecuteRestore.textContent = '⚡ RESTORE ACCOUNTS NOW';
+      }
+    });
+  }
+
+  if (btnRefreshDbStatus) {
+    btnRefreshDbStatus.addEventListener('click', loadSystemStatus);
+  }
 
   // Verify Admin Passcode
   async function verifyAdminPassword() {
@@ -958,26 +1309,49 @@ document.addEventListener('DOMContentLoaded', () => {
   // Save changes from Admin Dashboard & Broadcast Live to Everyone!
   if (btnSaveInventory) {
     btnSaveInventory.addEventListener('click', async () => {
+      const origHtml = btnSaveInventory.innerHTML;
+      btnSaveInventory.innerHTML = '⚡ APPLYING...';
+      btnSaveInventory.disabled = true;
+
+      const p1 = parseInt(inputPrice1.value, 10);
+      const p2 = parseInt(inputPrice2.value, 10);
+      const p5 = parseInt(inputPrice5.value, 10);
+      const p10 = parseInt(inputPrice10.value, 10);
+      const p20 = parseInt(inputPrice20.value, 10);
+
+      const updatedPrices = {
+        1: isNaN(p1) ? (currentInventory.prices[1] || 40) : p1,
+        2: isNaN(p2) ? (currentInventory.prices[2] || 75) : p2,
+        5: isNaN(p5) ? (currentInventory.prices[5] || 180) : p5,
+        10: isNaN(p10) ? (currentInventory.prices[10] || 320) : p10,
+        20: isNaN(p20) ? (currentInventory.prices[20] || 620) : p20
+      };
+
+      const updateTimestamp = Date.now();
       const updated = {
         stockCount: parseInt(inputStockCount.value, 10) || 0,
         stockLabel: inputStockLabel.value.trim() || 'IN STOCK',
-        prices: {
-          1: parseInt(inputPrice1.value, 10) || 0,
-          2: parseInt(inputPrice2.value, 10) || 0,
-          5: parseInt(inputPrice5.value, 10) || 0,
-          10: parseInt(inputPrice10.value, 10) || 0,
-          20: parseInt(inputPrice20.value, 10) || 0
-        }
+        prices: updatedPrices,
+        updatedAt: updateTimestamp
       };
 
-      // 1. Broadcast via WebSocket immediately
+      // 1. Lock into local browser storage immediately
+      try {
+        localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(updated));
+        localStorage.setItem(LOCKED_PRICES_KEY, JSON.stringify(updatedPrices));
+      } catch (e) {}
+
+      // 2. Update local UI immediately
+      renderInventoryUI(updated, true);
+
+      // 3. Broadcast via WebSocket immediately
       sendWsMessage({
         type: 'UPDATE_INVENTORY',
         data: updated,
         adminPass: ADMIN_PASSCODE
       });
 
-      // 2. Also save via REST API
+      // 4. Save via REST API
       try {
         const res = await fetch(`${API_BASE_URL}/api/inventory`, {
           method: 'POST',
@@ -999,9 +1373,13 @@ document.addEventListener('DOMContentLoaded', () => {
         console.warn("HTTP inventory save:", e);
       }
 
-      // 3. Update local UI
-      renderInventoryUI(updated, true);
       showToast(`✓ Broadcast Live! ${updated.stockCount} ${updated.stockLabel}`);
+
+      btnSaveInventory.innerHTML = '✓ APPLIED LIVE!';
+      setTimeout(() => {
+        btnSaveInventory.innerHTML = origHtml;
+        btnSaveInventory.disabled = false;
+      }, 1500);
     });
   }
 
@@ -1045,6 +1423,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderAdminConversationsList(conversations) {
     adminConversations = conversations || [];
+    if (adminConversations.length > 0) {
+      const toVault = adminConversations.map(c => ({
+        id: c.userId,
+        username: c.username,
+        createdAt: c.createdAt
+      }));
+      saveToAccountsVault(toVault);
+    }
     if (!adminUserList) return;
 
     // Filter by search query if any
